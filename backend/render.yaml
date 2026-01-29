@@ -1,0 +1,27 @@
+# Render Blueprint
+# 部署到 Render 的配置
+
+services:
+  - type: web
+    name: video-downloader-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: LOCAL_STORAGE_PATH
+        value: /tmp/video-downloads
+      # R2 配置（可選，使用時取消註釋）
+      # - key: USE_R2_STORAGE
+      #   value: "true"
+      # - key: R2_ACCOUNT_ID
+      #   sync: false
+      # - key: R2_ACCESS_KEY_ID
+      #   sync: false
+      # - key: R2_SECRET_ACCESS_KEY
+      #   sync: false
+      # - key: R2_BUCKET_NAME
+      #   value: video-downloads
