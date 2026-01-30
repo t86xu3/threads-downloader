@@ -3,15 +3,15 @@ FROM python:3.11-slim
 # 安裝系統依賴
 RUN apt-get update && apt-get install -y \
     chromium \
-    chromium-driver \
     curl \
     wget \
     ffmpeg \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # 設置 Chrome 環境變數
 ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage"
 
 # 設置工作目錄
 WORKDIR /app

@@ -113,6 +113,8 @@ class ThreadsDownloader(BaseDownloader):
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
         from webdriver_manager.chrome import ChromeDriverManager
+        from webdriver_manager.core.os_manager import ChromeType
+        import os
 
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -125,8 +127,16 @@ class ThreadsDownloader(BaseDownloader):
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
 
-        # 使用 webdriver-manager 自動管理 ChromeDriver
-        service = Service(ChromeDriverManager().install())
+        # 檢查是否在 Docker/Linux 環境中使用 Chromium
+        chrome_bin = os.environ.get("CHROME_BIN")
+        if chrome_bin and "chromium" in chrome_bin:
+            chrome_options.binary_location = chrome_bin
+            # 使用 Chromium 對應的 driver
+            service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+        else:
+            # 本地開發環境使用標準 Chrome
+            service = Service(ChromeDriverManager().install())
+
         return webdriver.Chrome(service=service, options=chrome_options)
 
     async def _parse_with_selenium(self, url: str) -> ParseResult:
