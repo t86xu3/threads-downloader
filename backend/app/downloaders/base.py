@@ -4,14 +4,33 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, Tuple
-from dataclasses import dataclass
+from typing import Callable, Optional, Tuple, List
+from dataclasses import dataclass, field
 
 
 @dataclass
 class DownloadResult:
     success: bool
     file_path: Optional[str] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class MediaItem:
+    """媒體項目（影片或圖片）"""
+    type: str  # 'video' or 'image'
+    url: str
+    thumbnail: Optional[str] = None
+    duration: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+@dataclass
+class ParseResult:
+    """解析結果"""
+    success: bool
+    media: List[MediaItem] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -44,6 +63,22 @@ class BaseDownloader(ABC):
     def is_valid_url(self, url: str) -> bool:
         """檢查 URL 是否為此平台的有效連結"""
         pass
+
+    async def parse(self, url: str) -> ParseResult:
+        """
+        解析貼文中的所有媒體
+
+        Args:
+            url: 貼文網址
+
+        Returns:
+            ParseResult 包含成功狀態和媒體列表
+        """
+        # 預設實作：返回單一媒體（原始 URL）
+        return ParseResult(
+            success=True,
+            media=[MediaItem(type="video", url=url)],
+        )
 
     def _update_progress(
         self,

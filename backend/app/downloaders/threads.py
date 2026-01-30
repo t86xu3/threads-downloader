@@ -10,14 +10,197 @@ import subprocess
 import tempfile
 from typing import Callable, Optional
 
-from .base import BaseDownloader, DownloadResult
+from .base import BaseDownloader, DownloadResult, ParseResult, MediaItem
+import json
 
 
 class ThreadsDownloader(BaseDownloader):
     platform_name = "threads"
 
     def is_valid_url(self, url: str) -> bool:
-        return "threads.net" in url
+        return "threads.net" in url or "threads.com" in url
+
+    async def parse(self, url: str) -> ParseResult:
+        """解析 Threads 貼文中的所有媒體"""
+        try:
+            # 使用 yt-dlp 獲取媒體資訊
+            command = [
+                "yt-dlp",
+                "--dump-json",
+                "--no-warnings",
+                "--flat-playlist",
+                url,
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=60,
+            )
+
+            if process.returncode != 0:
+                # yt-dlp 失敗，嘗試使用 Selenium 解析
+                return await self._parse_with_selenium(url)
+
+            media_items = []
+            # yt-dlp 可能輸出多行 JSON（playlist 的情況）
+            for line in stdout.decode().strip().split('\n'):
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    media_item = self._extract_media_item(data)
+                    if media_item:
+                        media_items.append(media_item)
+                except json.JSONDecodeError:
+                    continue
+
+            if media_items:
+                return ParseResult(success=True, media=media_items)
+
+            # 如果沒找到，嘗試 Selenium
+            return await self._parse_with_selenium(url)
+
+        except asyncio.TimeoutError:
+            return ParseResult(success=False, error="解析超時")
+        except Exception as e:
+            return ParseResult(success=False, error=str(e))
+
+    def _extract_media_item(self, data: dict) -> Optional[MediaItem]:
+        """從 yt-dlp JSON 中提取媒體項目"""
+        # 獲取最佳格式的 URL
+        url = data.get("url") or data.get("webpage_url")
+        if not url:
+            # 嘗試從 formats 中獲取
+            formats = data.get("formats", [])
+            if formats:
+                # 選擇最佳品質
+                best_format = max(formats, key=lambda f: f.get("height", 0) or 0)
+                url = best_format.get("url")
+
+        if not url:
+            return None
+
+        # 判斷類型
+        media_type = "video"
+        if data.get("ext") in ["jpg", "jpeg", "png", "webp", "gif"]:
+            media_type = "image"
+
+        # 格式化時長
+        duration = None
+        if data.get("duration"):
+            secs = int(data["duration"])
+            mins, secs = divmod(secs, 60)
+            duration = f"{mins}:{secs:02d}"
+
+        return MediaItem(
+            type=media_type,
+            url=url,
+            thumbnail=data.get("thumbnail"),
+            duration=duration,
+            width=data.get("width"),
+            height=data.get("height"),
+        )
+
+    def _create_chrome_driver(self):
+        """建立 Chrome driver 並自動管理版本"""
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        # 使用 webdriver-manager 自動管理 ChromeDriver
+        service = Service(ChromeDriverManager().install())
+        return webdriver.Chrome(service=service, options=chrome_options)
+
+    async def _parse_with_selenium(self, url: str) -> ParseResult:
+        """使用 Selenium 解析頁面中的媒體"""
+        try:
+            from selenium.webdriver.common.by import By
+
+            loop = asyncio.get_event_loop()
+            driver = await loop.run_in_executor(
+                None,
+                self._create_chrome_driver,
+            )
+
+            try:
+                await loop.run_in_executor(None, lambda: driver.get(url))
+                await asyncio.sleep(5)
+
+                media_items = []
+
+                # 找所有影片
+                video_elements = await loop.run_in_executor(
+                    None,
+                    lambda: driver.find_elements(By.TAG_NAME, "video"),
+                )
+
+                for video in video_elements:
+                    src = video.get_attribute("src")
+                    poster = video.get_attribute("poster")
+                    if src and src.startswith("http"):
+                        media_items.append(MediaItem(
+                            type="video",
+                            url=src,
+                            thumbnail=poster,
+                        ))
+
+                # 找所有圖片（輪播貼文中的圖片）
+                # Threads 的圖片通常在特定的容器中
+                img_elements = await loop.run_in_executor(
+                    None,
+                    lambda: driver.find_elements(By.CSS_SELECTOR, "img[src*='cdninstagram'], img[src*='fbcdn']"),
+                )
+
+                for img in img_elements:
+                    src = img.get_attribute("src")
+                    if src and src.startswith("http") and "profile" not in src.lower():
+                        # 過濾掉頭像等小圖
+                        width = img.get_attribute("width")
+                        if width and int(width) > 100:
+                            media_items.append(MediaItem(
+                                type="image",
+                                url=src,
+                                thumbnail=src,
+                            ))
+
+                # 從頁面源碼中尋找影片 URL
+                if not media_items:
+                    page_source = driver.page_source
+                    video_url = self._extract_video_url_from_source(page_source)
+                    if video_url:
+                        media_items.append(MediaItem(
+                            type="video",
+                            url=video_url,
+                        ))
+
+                if media_items:
+                    return ParseResult(success=True, media=media_items)
+
+                return ParseResult(success=False, error="找不到媒體")
+
+            finally:
+                driver.quit()
+
+        except Exception as e:
+            return ParseResult(success=False, error=f"Selenium 解析錯誤: {str(e)}")
 
     async def download(
         self,
@@ -95,43 +278,15 @@ class ThreadsDownloader(BaseDownloader):
     ) -> DownloadResult:
         """使用 Selenium 抓取影片 URL 後下載"""
         try:
-            from selenium import webdriver
             from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            from selenium.webdriver.chrome.options import Options
-            from selenium.webdriver.chrome.service import Service
 
             self._update_progress(progress_callback, 40)
 
-            # 設置 Chrome 選項
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument(
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-
-            # 嘗試不同的 Chrome 路徑
-            chrome_paths = [
-                "/usr/bin/chromium-browser",
-                "/usr/bin/google-chrome",
-                "/usr/bin/chromium",
-            ]
-            for path in chrome_paths:
-                if os.path.exists(path):
-                    chrome_options.binary_location = path
-                    break
-
-            # 創建 driver
+            # 創建 driver（使用 webdriver-manager 自動管理版本）
             loop = asyncio.get_event_loop()
             driver = await loop.run_in_executor(
                 None,
-                lambda: webdriver.Chrome(options=chrome_options),
+                self._create_chrome_driver,
             )
 
             self._update_progress(progress_callback, 50)

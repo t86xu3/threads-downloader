@@ -26,6 +26,7 @@ class Task:
     progress: int = 0
     download_url: Optional[str] = None
     error: Optional[str] = None
+    media_type: Optional[str] = None  # 'video' or 'image'
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 

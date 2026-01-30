@@ -7,7 +7,8 @@ from typing import Optional
 
 def get_downloader(url: str) -> Optional[BaseDownloader]:
     """根據 URL 自動選擇對應的下載器"""
-    if "threads.net" in url:
+    # 支援 threads.net 和 threads.com
+    if "threads.net" in url or "threads.com" in url:
         return ThreadsDownloader()
     elif "xiaohongshu.com" in url or "xhslink.com" in url:
         return XiaohongshuDownloader()
