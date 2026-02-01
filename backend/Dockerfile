@@ -31,8 +31,8 @@ COPY . .
 # 建立下載目錄
 RUN mkdir -p /tmp/video-downloads
 
-# 暴露端口
-EXPOSE 8000
+# 暴露端口（Cloud Run 使用 PORT 環境變數）
+EXPOSE 8080
 
-# 啟動命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 啟動命令（使用 shell 形式以支援環境變數）
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
