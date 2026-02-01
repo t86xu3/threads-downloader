@@ -17,8 +17,11 @@
 | 後端測試 | pytest | 9.0.2 | Python 測試框架 |
 | 前端測試 | Jest | 29.7.0 | JavaScript 測試框架 |
 | E2E 測試 | Playwright | 1.41.0 | 端對端測試 |
-| 部署（前端）| Vercel | - | 免費 Hobby 方案 |
-| 部署（後端）| Render | - | 免費 Web Service |
+| 部署（前端）| Vercel | - | 免費 Hobby 方案（舊） |
+| 部署（後端）| Render | - | 免費 Web Service（舊） |
+| 部署（前端）| Firebase Hosting | - | 支援 Next.js SSR（新） |
+| 部署（後端）| Cloud Run | - | min-instances=1（新） |
+| 存儲 | Google Cloud Storage | 2.14.0 | 影片暫存（24小時刪除） |
 
 ## 目錄結構
 
@@ -50,7 +53,8 @@ threads-downloader/
 │   │   ├── queue.py            # 任務隊列
 │   │   ├── storage/
 │   │   │   ├── local.py        # 本地存儲
-│   │   │   └── r2.py           # Cloudflare R2
+│   │   │   ├── r2.py           # Cloudflare R2
+│   │   │   └── gcs.py          # Google Cloud Storage
 │   │   └── downloaders/
 │   │       ├── base.py         # 下載器基類
 │   │       ├── threads.py      # Threads 下載器
@@ -65,8 +69,14 @@ threads-downloader/
 │   ├── requirements-test.txt
 │   ├── pytest.ini
 │   ├── Dockerfile
-│   └── render.yaml
+│   ├── render.yaml
+│   └── cloudbuild.yaml         # GCP Cloud Build 配置
 │
+├── docs/
+│   └── GCP_DEPLOYMENT.md       # GCP 部署指南
+│
+├── firebase.json               # Firebase Hosting 配置
+├── .firebaserc                 # Firebase 專案設定
 ├── download_threads.py          # 舊版腳本（備份）
 ├── run-tests.sh                 # 測試執行腳本
 ├── start-dev.sh                 # 開發啟動腳本
@@ -91,6 +101,8 @@ threads-downloader/
 | Threads 下載 | backend/app/downloaders/threads.py | Selenium + yt-dlp |
 | 小紅書下載 | backend/app/downloaders/xiaohongshu.py | yt-dlp + 頁面解析 |
 | 抖音下載 | backend/app/downloaders/douyin.py | yt-dlp + API |
+| GCS 存儲 | backend/app/storage/gcs.py | Google Cloud Storage |
+| 部署指南 | docs/GCP_DEPLOYMENT.md | GCP 部署步驟 |
 | 後端測試 | backend/tests/ | pytest 測試套件 (42 tests) |
 | 前端測試 | frontend/src/__tests__/ | Jest 測試 (12 tests) |
 | E2E 測試 | frontend/e2e/ | Playwright 測試 (11 tests) |
@@ -112,11 +124,26 @@ threads-downloader/
 - [x] 本地測試
 - [x] 自動化測試（65 tests 全部通過）
 
-### 下一階段：v1.1 部署上線
+### v1.1 部署上線（Vercel + Render）✅
 
-- [ ] 部署前端到 Vercel
-- [ ] 部署後端到 Render
-- [ ] 設定 Cloudflare R2 存儲
+- [x] 部署前端到 Vercel
+- [x] 部署後端到 Render
+
+### v1.3 GCP 遷移（進行中）
+
+#### 代碼準備 ✅
+- [x] 新增 GCS 存儲模組 (gcs.py)
+- [x] 新增 Cloud Build 配置 (cloudbuild.yaml)
+- [x] 新增 Firebase Hosting 配置
+- [x] 修改 main.py 支援多存儲後端
+- [x] 建立部署指南文檔
+
+#### 實際部署（待執行）
+- [ ] 建立 GCP 專案、啟用 API
+- [ ] 建立 Cloud Storage bucket
+- [ ] 部署後端到 Cloud Run
+- [ ] 部署前端到 Firebase Hosting
+- [ ] 設定服務帳號權限
 - [ ] 端對端線上測試
 
 ### v1.2 SEO 與廣告整合（進行中）
@@ -144,7 +171,7 @@ threads-downloader/
 
 ### 待優化項目
 
-- [ ] R2 存儲整合（生產環境）
+- [x] 雲端存儲整合（GCS / R2）
 - [ ] 錯誤處理優化
 - [ ] 下載進度更精確
 
@@ -152,7 +179,9 @@ threads-downloader/
 
 - 進入點：frontend/src/app/page.tsx, backend/app/main.py
 - 設定檔：frontend/next.config.mjs, backend/app/config.py
-- 部署配置：frontend/vercel.json, backend/render.yaml, backend/Dockerfile
+- 部署配置（舊）：frontend/vercel.json, backend/render.yaml
+- 部署配置（GCP）：firebase.json, backend/cloudbuild.yaml, backend/Dockerfile
+- 部署指南：docs/GCP_DEPLOYMENT.md
 - 測試腳本：run-tests.sh
 - 開發啟動：start-dev.sh
 
