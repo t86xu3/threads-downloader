@@ -15,8 +15,13 @@ class Settings(BaseSettings):
     r2_public_url: str = ""  # Custom domain or R2.dev URL
 
     # Storage settings
+    storage_provider: str = "local"  # "local", "r2", or "gcs"
     local_storage_path: str = "/tmp/video-downloads"
-    use_r2_storage: bool = False  # Set to True when R2 is configured
+    use_r2_storage: bool = False  # Set to True when R2 is configured (deprecated, use storage_provider)
+
+    # Google Cloud Storage settings
+    gcs_bucket_name: str = ""
+    gcs_project_id: str = ""  # Optional, auto-detected from environment
 
     # Task settings
     task_timeout_seconds: int = 300  # 5 minutes

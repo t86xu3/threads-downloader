@@ -1,0 +1,68 @@
+# Cloud Build 配置
+# 用於自動建置 Docker 映像並部署到 Cloud Run
+
+steps:
+  # 建置 Docker 映像
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/video-downloader-api:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/video-downloader-api:latest'
+      - '.'
+
+  # 推送映像到 Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/video-downloader-api:$COMMIT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/video-downloader-api:latest'
+
+  # 部署到 Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'video-downloader-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/video-downloader-api:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}'
+
+# 替換變數（可在 Cloud Build trigger 中設定）
+substitutions:
+  _GCS_BUCKET_NAME: 'threads-downloader-prod-videos'
+
+# 映像輸出
+images:
+  - 'gcr.io/$PROJECT_ID/video-downloader-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/video-downloader-api:latest'
+
+# 建置設定
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# 建置超時（15 分鐘）
+timeout: '900s'

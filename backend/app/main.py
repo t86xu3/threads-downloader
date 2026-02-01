@@ -23,6 +23,8 @@ from .config import get_settings
 from .queue import task_queue, TaskStatus
 from .downloaders import get_downloader, get_downloader_by_platform
 from .storage.local import LocalStorage
+from .storage.gcs import GCSStorage
+from .storage.r2 import R2Storage
 
 # Rate Limiter 設定
 limiter = Limiter(key_func=get_remote_address)
@@ -31,8 +33,35 @@ limiter = Limiter(key_func=get_remote_address)
 # 應用設定
 settings = get_settings()
 
-# 本地存儲
-storage = LocalStorage(settings.local_storage_path)
+
+def get_storage():
+    """根據設定選擇存儲後端"""
+    provider = settings.storage_provider.lower()
+
+    if provider == "gcs" and settings.gcs_bucket_name:
+        print(f"📦 使用 GCS 存儲: {settings.gcs_bucket_name}")
+        return GCSStorage(
+            bucket_name=settings.gcs_bucket_name,
+            project_id=settings.gcs_project_id or None,
+        )
+    elif provider == "r2" or settings.use_r2_storage:
+        if settings.r2_account_id and settings.r2_access_key_id:
+            print("📦 使用 R2 存儲")
+            return R2Storage(
+                account_id=settings.r2_account_id,
+                access_key_id=settings.r2_access_key_id,
+                secret_access_key=settings.r2_secret_access_key,
+                bucket_name=settings.r2_bucket_name,
+                public_url=settings.r2_public_url,
+            )
+
+    # 預設使用本地存儲
+    print(f"📦 使用本地存儲: {settings.local_storage_path}")
+    return LocalStorage(settings.local_storage_path)
+
+
+# 初始化存儲
+storage = get_storage()
 
 
 @asynccontextmanager
